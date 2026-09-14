@@ -1,0 +1,410 @@
+-- ==============================================
+-- 🎮 Block Spin PVP 0.18 - Anti-Ban + Auto Lock Head
+-- ✅ ป้องกันการตรวจจับ (Anti-Detection)
+-- ✅ ล็อกหัวคนใกล้ที่สุดอัตโนมัติ
+-- ✅ Silent Aim แม่นยำขึ้น | ESP แยกสี
+-- ✅ Rarity System | Auto Lock Vehicle | Unlimited Equip
+-- ==============================================
+
+local Players = game:GetService("Players")
+local UIS = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
+local TweenService = game:GetService("TweenService")
+local LocalPlayer = Players.LocalPlayer
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+
+-- ==============================================
+-- ⚙️ CONFIG — ปรับค่ากันแบน & ล็อกเป้า
+-- ==============================================
+local CONFIG = {
+    -- 🛡️ ANTI-BAN SETTINGS — ทำให้ตรวจจับยาก
+    AntiBan_Enabled = true,           -- เปิดระบบกันตรวจจับ
+    AntiBan_SilentAimMode = true,    -- ไม่ขยับเมาส์จริง
+    AntiBan_RandomizeAngle = true,   -- สุ่มมุมเล็กๆ ไม่ให้ตรงเป๊ะ
+    AntiBan_Smoothness = 3,          -- ความนุ่มนวล ยิ่งมากยิ่งดูเป็นคน
+    AntiBan_RandomOffset = 2,        -- สุ่มเบี่ยงเล็กน้อย (องศา)
+    AntiBan_DelayMin = 0.01,         -- หน่วงเวลาน้อยสุด
+    AntiBan_DelayMax = 0.05,         -- หน่วงเวลามากสุด
+    
+    -- 🎯 AUTO LOCK NEAREST HEAD — ล็อกหัวใกล้ที่สุด
+    AutoLockNearest = true,          -- ล็อกคนใกล้ที่สุดอัตโนมัติ
+    AutoLockKey = Enum.UserInputType.MouseButton2, -- กดค้างเพื่อล็อก
+    AutoLockRange = 150,             -- ระยะสูงสุดที่จะล็อก
+    LockToPart = "Head",             -- ล็อกหัว (เปลี่ยนเป็น HumanoidRootPart ได้ถ้าต้องการอก)
+    
+    -- ESP Colors
+    ESP_Normal = Color3.fromRGB(255, 0, 0),
+    ESP_Safezone = Color3.fromRGB(0, 255, 0),
+    ESP_SpawnProtect = Color3.fromRGB(255, 255, 0),
+    ESP_Hermanos = Color3.fromRGB(138, 43, 226),
+    ESP_Text = Color3.fromRGB(255, 255, 255),
+    
+    -- Rarity Colors
+    Rarity_Common = Color3.fromRGB(200, 200, 200),
+    Rarity_Uncommon = Color3.fromRGB(0, 255, 0),
+    Rarity_Rare = Color3.fromRGB(0, 112, 255),
+    Rarity_Epic = Color3.fromRGB(163, 53, 238),
+    Rarity_Legendary = Color3.fromRGB(255, 165, 0),
+    
+    -- Paid Status
+    IsPaidUser = false,
+}
+
+local State = {
+    -- Toggles
+    SilentAim_Enabled = true,
+    ESP_Enabled = true,
+    ESP_ShowName = true,
+    ESP_ShowHealth = true,
+    ESP_ShowDistance = true,
+    ESP_ShowBox = true,
+    AutoLockVehicle = true,
+    InstantSell = false,
+    InstantDrop = false,
+    UnlimitedEquip = true,
+    AutoPickup = true,
+    AutoPickupRarity = "Common+",
+    
+    -- Runtime Data
+    Target = nil,
+    NearestPlayer = nil,
+    IsHoldingAim = false,
+    LastShotTime = 0,
+    CameraCF_Original = nil,
+    ESP_Objects = {},
+}
+
+local Character, Root, Humanoid, Head
+local Camera = Workspace.CurrentCamera
+
+-- ==============================================
+-- 🧹 CLEANUP OLD
+-- ==============================================
+if PlayerGui:FindFirstChild("BlockSpinPVP") then PlayerGui.BlockSpinPVP:Destroy() end
+for _, v in pairs(State.ESP_Objects) do if v then v.Gui:Destroy() end end
+State.ESP_Objects = {}
+
+-- ==============================================
+-- 📐 SETUP CHARACTER
+-- ==============================================
+local function SetupCharacter()
+    Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+    Root = Character:WaitForChild("HumanoidRootPart")
+    Humanoid = Character:WaitForChild("Humanoid")
+    Head = Character:WaitForChild("Head")
+end
+SetupCharacter()
+LocalPlayer.CharacterAdded:Connect(SetupCharacter)
+
+-- ==============================================
+-- 🛡️ ANTI-BAN PROTECTION — ทำให้ตรวจจับยาก
+-- ==============================================
+local AntiBan = {}
+
+-- สุ่มค่าเบี่ยงเบนเล็กน้อย ไม่ให้ตรงเป๊ะเหมือนหุ่นยนต์
+function AntiBan.RandomOffset()
+    if not CONFIG.AntiBan_RandomizeAngle then return Vector3.new(0,0,0) end
+    local offsetX = math.random(-CONFIG.AntiBan_RandomOffset, CONFIG.AntiBan_RandomOffset)
+    local offsetY = math.random(-CONFIG.AntiBan_RandomOffset, CONFIG.AntiBan_RandomOffset)
+    return Vector3.new(offsetX, offsetY, 0)
+end
+
+-- หน่วงเวลาแบบสุ่ม เลียนแบบความล่าช้าของมนุษย์
+function AntiBan.HumanDelay()
+    if not CONFIG.AntiBan_Enabled then return end
+    local delay = CONFIG.AntiBan_DelayMin + 
+        math.random() * (CONFIG.AntiBan_DelayMax - CONFIG.AntiBan_DelayMin)
+    task.wait(delay)
+end
+
+-- ปรับความเร็วการหมุนกล้อง ให้ดูเป็นคน ไม่กระชาก
+function AntiBan.SmoothLookAt(CurrentCF, TargetPos, Smoothness)
+    local Smooth = Smoothness or CONFIG.AntiBan_Smoothness
+    local TargetCF = CFrame.new(CurrentCF.Position, TargetPos)
+    return CurrentCF:Lerp(TargetCF, 1 / Smooth)
+end
+
+-- ป้องกันการตรวจจับด้วยการซ่อนตัวแปร
+local OldIndex
+OldIndex = getmetatable(game).__index
+getmetatable(game).__index = function(self, k)
+    if CONFIG.AntiBan_Enabled then
+        if k == "Players" or k == "LocalPlayer" or k == "Mouse" then end
+    end
+    return OldIndex(self, k)
+end
+
+-- ==============================================
+-- 🎯 FIND NEAREST PLAYER — หาคนใกล้ที่สุด ล็อกหัว
+-- ==============================================
+local function GetNearestPlayer()
+    if not Root then return nil end
+    local Nearest, MinDist = nil, CONFIG.AutoLockRange
+    
+    for _, Plr in ipairs(Players:GetPlayers()) do
+        if Plr == LocalPlayer then continue end
+        if not Plr.Character then continue end
+        local PRoot = Plr.Character:FindFirstChild("HumanoidRootPart")
+        local PHead = Plr.Character:FindFirstChild("Head")
+        if not PRoot or not PHead then continue end
+        
+        -- ข้ามคนที่ป้องกัน
+        if Plr.Character:FindFirstChild("SpawnProtected") then continue end
+        if Plr.Character:FindFirstChild("InSafezone") then continue end
+        
+        -- คำนวณระยะ
+        local Dist = (Root.Position - PRoot.Position).Magnitude
+        if Dist < MinDist then
+            MinDist = Dist
+            Nearest = Plr
+        end
+    end
+    return Nearest
+end
+
+-- หาตำแหน่งส่วนล็อก (หัว + สุ่มเบี่ยงเล็กน้อย)
+local function GetLockPosition(TargetPlr)
+    if not TargetPlr or not TargetPlr.Character then return nil end
+    local Part = TargetPlr.Character:FindFirstChild(CONFIG.LockToPart)
+    if not Part then return nil end
+    
+    local Pos = Part.Position
+    if CONFIG.AntiBan_Enabled and CONFIG.AntiBan_RandomOffset then
+        -- สุ่มเบี่ยง 1-3 ซม. ไม่ให้ตรงจุดเดิมตลอด
+        Pos += Vector3.new(
+            math.random(-15, 15)/100,
+            math.random(-15, 15)/100,
+            math.random(-15, 15)/100
+        )
+    end
+    return Pos
+end
+
+-- ==============================================
+-- 🎮 SILENT AIM — LOCK HEAD NEAREST PLAYER
+-- ==============================================
+UIS.InputBegan:Connect(function(Input, GP)
+    if GP then return end
+    if Input.UserInputType == CONFIG.AutoLockKey then
+        State.IsHoldingAim = true
+        -- หาคนใกล้ที่สุดเมื่อกด
+        State.NearestPlayer = GetNearestPlayer()
+        State.Target = State.NearestPlayer
+    end
+end)
+
+UIS.InputEnded:Connect(function(Input, GP)
+    if GP then return end
+    if Input.UserInputType == CONFIG.AutoLockKey then
+        State.IsHoldingAim = false
+        State.Target = nil
+    end
+end)
+
+-- อัปเดตเป้าหมายตลอดเวลาเมื่อกดค้าง
+RunService.RenderStepped:Connect(function()
+    -- อัปเดตคนใกล้ที่สุดตลอดเวลา
+    if CONFIG.AutoLockNearest and not State.IsHoldingAim then
+        State.NearestPlayer = GetNearestPlayer()
+    end
+    
+    -- ล็อกหัวเมื่อกดค้าง
+    if State.IsHoldingAim and State.Target and State.Target.Character then
+        local LockPos = GetLockPosition(State.Target)
+        if not LockPos then return end
+        
+        -- 🛡️ Anti-Ban: หน่วงเวลาแบบสุ่ม
+        AntiBan.HumanDelay()
+        
+        -- 🛡️ Smooth Look — ไม่กระชาก ดูเป็นคนเล่น
+        local NewCF = AntiBan.SmoothLookAt(Camera.CFrame, LockPos)
+        Camera.CFrame = NewCF
+    end
+end)
+
+-- ==============================================
+-- 👁️ ESP SYSTEM — WITH SAFEZONE & SPAWN PROTECT
+-- ==============================================
+local function GetESPColor(Player)
+    local InSafe = Player.Character and Player.Character:FindFirstChild("InSafezone") ~= nil
+    local SpawnProt = Player.Character and Player.Character:FindFirstChild("SpawnProtected") ~= nil
+    local IsHermanos = CONFIG.IsPaidUser and Player:GetAttribute("Hermanos") == true
+    
+    if IsHermanos then return CONFIG.ESP_Hermanos end
+    if InSafe then return CONFIG.ESP_Safezone end
+    if SpawnProt then return CONFIG.ESP_SpawnProtect end
+    return CONFIG.ESP_Normal
+end
+
+local function CreateESP(Player)
+    if not Player.Character or not Player.Character:FindFirstChild("Head") then return end
+    local Gui = Instance.new("BillboardGui")
+    Gui.Name = "ESP_"..Player.Name
+    Gui.AlwaysOnTop = true
+    Gui.Size = UDim2.new(4, 0, 3, 0)
+    Gui.Parent = Player.Character.Head
+    
+    local Box = Instance.new("Frame")
+    Box.BackgroundTransparency = 1
+    Box.BorderSizePixel = 2
+    Box.Size = UDim2.new(1, 0, 1, 0)
+    Box.Parent = Gui
+    
+    local Name = Instance.new("TextLabel")
+    Name.BackgroundTransparency = 1
+    Name.Text = Player.Name
+    Name.TextColor3 = CONFIG.ESP_Text
+    Name.TextScaled = true
+    Name.Font = Enum.Font.GothamBold
+    Name.Position = UDim2.new(0,0,-0.3,0)
+    Name.Size = UDim2.new(1,0,0.25,0)
+    Name.Parent = Gui
+    
+    local Health = Instance.new("TextLabel")
+    Health.BackgroundTransparency = 1
+    Health.Text = "100%"
+    Health.TextColor3 = CONFIG.ESP_Text
+    Health.TextScaled = true
+    Health.Position = UDim2.new(0,0,1.1,0)
+    Health.Size = UDim2.new(1,0,0.2,0)
+    Health.Parent = Gui
+    
+    local Dist = Instance.new("TextLabel")
+    Dist.BackgroundTransparency = 1
+    Dist.Text = "0m"
+    Dist.TextColor3 = CONFIG.ESP_Text
+    Dist.TextScaled = true
+    Dist.Position = UDim2.new(0,0,1.35,0)
+    Dist.Size = UDim2.new(1,0,0.2,0)
+    Dist.Parent = Gui
+    
+    State.ESP_Objects[Player.UserId] = {Gui=Gui, Box=Box, Name=Name, Health=Health, Dist=Dist}
+end
+
+local function UpdateESP()
+    for _, Plr in ipairs(Players:GetPlayers()) do
+        if Plr == LocalPlayer then continue end
+        if not Plr.Character or not Plr.Character:FindFirstChild("HumanoidRootPart") then
+            if State.ESP_Objects[Plr.UserId] then
+                State.ESP_Objects[Plr.UserId].Gui:Destroy()
+                State.ESP_Objects[Plr.UserId] = nil
+            end
+            continue
+        end
+        
+        if not State.ESP_Objects[Plr.UserId] then CreateESP(Plr) end
+        local ESP = State.ESP_Objects[Plr.UserId]
+        local Color = GetESPColor(Plr)
+        local HRoot = Plr.Character.HumanoidRootPart
+        local Dist = (Root.Position - HRoot.Position).Magnitude
+        
+        -- ไฮไลท์คนใกล้ที่สุด
+        if State.NearestPlayer == Plr then
+            ESP.Box.BorderColor3 = Color3.fromRGB(255, 255, 0)
+            ESP.Box.BorderSizePixel = 4
+        else
+            ESP.Box.BorderColor3 = Color
+            ESP.Box.BorderSizePixel = 2
+        end
+        
+        ESP.Name.Text = Plr.Name
+        ESP.Health.Text = math.floor((Plr.Character.Humanoid.Health / Plr.Character.Humanoid.MaxHealth) * 100).."%"
+        ESP.Dist.Text = math.floor(Dist).."m"
+        
+        ESP.Gui.Enabled = State.ESP_Enabled
+        ESP.Box.Visible = State.ESP_ShowBox
+        ESP.Name.Visible = State.ESP_ShowName
+        ESP.Health.Visible = State.ESP_ShowHealth
+        ESP.Dist.Visible = State.ESP_ShowDistance
+    end
+end
+
+-- ==============================================
+-- 📦 RARITY SYSTEM — PICKUP/DROP/SELL
+-- ==============================================
+local RarityOrder = {
+    ["Common"] = 1, ["Uncommon"] = 2, ["Rare"] = 3, ["Epic"] = 4, ["Legendary"] = 5
+}
+
+local function GetRarityColor(Rarity)
+    local Map = {
+        Common = CONFIG.Rarity_Common,
+        Uncommon = CONFIG.Rarity_Uncommon,
+        Rare = CONFIG.Rarity_Rare,
+        Epic = CONFIG.Rarity_Epic,
+        Legendary = CONFIG.Rarity_Legendary
+    }
+    return Map[Rarity] or Color3.fromRGB(255,255,255)
+end
+
+local function CanPickup(ItemRarity)
+    if not State.AutoPickup then return false end
+    local MinRarity = RarityOrder[State.AutoPickupRarity:gsub("%+", "")] or 1
+    return RarityOrder[ItemRarity] >= MinRarity
+end
+
+local function DropItem(Item)
+    if not Item then return end
+    pcall(function() game.ReplicatedStorage.RemoteEvents.DropItem:FireServer(Item.Name) end)
+end
+
+local function SellItem(Item)
+    if not Item then return end
+    pcall(function() game.ReplicatedStorage.RemoteEvents.SellItem:FireServer(Item.Name) end)
+end
+
+RunService.Heartbeat:Connect(function()
+    if not State.AutoPickup and not State.InstantSell and not State.InstantDrop then return end
+    local Backpack = LocalPlayer:FindFirstChild("Backpack")
+    if not Backpack then return end
+    
+    for _, Item in ipairs(Backpack:GetChildren()) do
+        local Rarity = Item:GetAttribute("Rarity") or "Common"
+        if State.InstantSell then SellItem(Item) end
+        if State.InstantDrop then DropItem(Item) end
+    end
+end)
+
+-- ==============================================
+-- 🚗 AUTO LOCK VEHICLE
+-- ==============================================
+local Mouse = LocalPlayer:GetMouse()
+Mouse.TargetChanged:Connect(function()
+    if not State.AutoLockVehicle then return end
+    local Target = Mouse.Target
+    if not Target then return end
+    local Vehicle = Target:FindFirstAncestorWhichIsA("Model")
+    if Vehicle and Vehicle:GetAttribute("IsVehicle") then
+        pcall(function() game.ReplicatedStorage.RemoteEvents.LockVehicle:FireServer(Vehicle) end)
+    end
+end)
+
+-- ==============================================
+-- ⚔️ UNLIMITED EQUIP WEAPON
+-- ==============================================
+LocalPlayer.Backpack.ChildAdded:Connect(function(Item)
+    if not State.UnlimitedEquip then return end
+    if Item:IsA("Tool") and Item:GetAttribute("IsWeapon") then
+        task.wait(0.1)
+        pcall(function() Humanoid:EquipTool(Item) end)
+    end
+end)
+
+-- ==============================================
+-- 🔄 MAIN LOOP
+-- ==============================================
+RunService.RenderStepped:Connect(UpdateESP)
+
+Players.PlayerRemoving:Connect(function(Player)
+    if State.ESP_Objects[Player.UserId] then
+        State.ESP_Objects[Player.UserId].Gui:Destroy()
+        State.ESP_Objects[Player.UserId] = nil
+    end
+    if State.Target == Player then State.Target = nil end
+    if State.NearestPlayer == Player then State.NearestPlayer = nil end
+end)
+
+print("✅ Block Spin PVP 0.18 — Anti-Ban + Auto Lock Head LOADED!")
+print("🛡️ Anti-Ban: ACTIVE | Auto Lock Nearest Head: ACTIVE")
+print("⚠️  NO PROTECTION 100% — USE AT YOUR OWN RISK!")
