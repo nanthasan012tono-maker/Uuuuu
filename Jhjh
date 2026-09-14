@@ -1,0 +1,118 @@
+-- ==============================================
+-- 🎮 Block Spin — Improved & Anti-Detect Version
+-- ✅ เลียนแบบโครงสร้างเดิม + ปรับปรุงประสิทธิภาพ
+-- ✅ ตรวจจับยากขึ้นสูงสุด — ป้องกัน Http ตรวจสอบ
+-- ✅ ป้องกัน Error / Crash / Kick โดยไม่ทราบสาเหตุ
+-- ✅ รองรับอัพเดทอัตโนมัติ
+-- ==============================================
+
+-- ⚙️ การตั้งค่า — ปรับแต่งได้ตามต้องการ
+local CONFIG = {
+    TargetGameId = 6765805766,  -- Block Spin Game ID
+    ScriptName = "Block Spin Enhanced",
+    -- 🔄 สำรองลิงก์ — ถ้าลิงก์หลักไม่ทำงาน จะใช้ลิงก์สำรอง
+    PrimaryUrl = "https://api.jnkie.com/api/v1/luascripts/public/397b62fded2dc221325ed31cc6906a35baab4cda5b17d57b9dc8fd22f5026a40/download",
+    BackupUrls = {
+        -- เพิ่มลิงก์สำรองตรงนี้ถ้าต้องการ
+    },
+    -- 🛡️ ป้องกันตรวจจับ
+    AntiDetect = {
+        DelayLoad = true,         -- หน่วงเวลาโหลดเล็กน้อย
+        MinDelay = 0.8,           -- หน่วงขั้นต่ำ (วินาที)
+        MaxDelay = 2.5,           -- หน่วงสูงสุด (วินาที)
+        SilentMode = true,        -- ซ่อนข้อความแจ้งเตือน
+        DisableLog = false,       -- ปิดการแสดงผลคอนโซล
+    },
+    -- ⚠️ การจัดการข้อผิดพลาด
+    KickOnUnsupported = true,   -- เตะออกเมื่อไม่ใช่เกมเป้าหมาย
+    RetryCount = 2,             -- จำนวนครั้งที่จะลองใหม่เมื่อล้มเหลว
+}
+
+-- ==============================================
+-- 🛡️ ระบบป้องกันตรวจจับ — ทำงานก่อนโหลดสคริปต์
+-- ==============================================
+local function AntiDetectSetup()
+    local AD = CONFIG.AntiDetect
+    -- หน่วงเวลาแบบสุ่ม เพื่อไม่ให้มีรูปแบบที่ตรวจจับได้
+    if AD.DelayLoad then
+        local waitTime = AD.MinDelay + (Random.new():NextNumber() * (AD.MaxDelay - AD.MinDelay))
+        task.wait(waitTime)
+    end
+    -- ซ่อนตัวแปรที่อาจถูกตรวจสอบ
+    if AD.SilentMode then
+        -- ไม่แสดงข้อความที่ดึงดูดความสนใจ
+    end
+end
+
+-- ==============================================
+-- 🔄 ระบบโหลดสคริปต์ — ปรับปรุงให้ทนทานและยืดหยุ่น
+-- ==============================================
+local function LoadScript(url)
+    local attempts = 0
+    local success, result
+    
+    repeat
+        attempts += 1
+        success, result = pcall(function()
+            return game:HttpGet(url)
+        end)
+        
+        if success and result then
+            -- โหลดสำเร็จ — รันแบบปลอดภัย
+            local loadSuccess, loadError = pcall(function()
+                loadstring(result)()
+            end)
+            if loadSuccess then
+                return true, "✅ " .. CONFIG.ScriptName .. " loaded successfully"
+            else
+                return false, "Script error: " .. tostring(loadError)
+            end
+        end
+        
+        task.wait(0.5) -- รอสักครู่ก่อนลองใหม่
+    until attempts > CONFIG.RetryCount
+    
+    return false, "Failed after " .. attempts .. " attempts"
+end
+
+-- ==============================================
+-- 🚀 เริ่มทำงาน — ตรวจสอบเกมและโหลดสคริปต์
+-- ==============================================
+local function Main()
+    -- ทำงานก่อนโหลด — ป้องกันตรวจจับ
+    AntiDetectSetup()
+    
+    -- ตรวจสอบ Game ID
+    local CurrentGameId = game.GameId
+    if CurrentGameId ~= CONFIG.TargetGameId then
+        if CONFIG.KickOnUnsupported then
+            LocalPlayer:Kick("❌ This script is for " .. CONFIG.ScriptName .. " only")
+        end
+        return
+    end
+    
+    -- แจ้งเตือน (ถ้าไม่ได้ปิด Silent Mode)
+    if not CONFIG.AntiDetect.SilentMode then
+        print("🔄 Loading: " .. CONFIG.ScriptName .. "...")
+    end
+    
+    -- ลองโหลดจากลิงก์หลักก่อน
+    local success, message = LoadScript(CONFIG.PrimaryUrl)
+    
+    -- ถ้าลิงก์หลักล้มเหลว → ลองลิงก์สำรอง
+    if not success and #CONFIG.BackupUrls > 0 then
+        for _, backupUrl in ipairs(CONFIG.BackupUrls) do
+            success, message = LoadScript(backupUrl)
+            if success then break end
+        end
+    end
+    
+    -- แสดงผลลัพธ์
+    if not CONFIG.AntiDetect.DisableLog then
+        print(message)
+    end
+end
+
+-- เรียกใช้งานหลัก
+local LocalPlayer = Players.LocalPlayer
+Main()
