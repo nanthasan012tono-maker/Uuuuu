@@ -1,0 +1,466 @@
+-- ==============================================
+-- 🎮 SAMUI SYSTEM v5.0 — มีดูดของด้วย
+-- ✅ เมนูเล็กกว่าหน้าจอเกมนิดนึง
+-- ✅ มีปุ่มเปิด-ปิดทุกฟีเจอร์
+-- ✅ เพิ่มโซน ระบบดูดของ AUTO MAGNET
+-- ✅ ของจะถูกดูดเข้าหาตัวเมื่อเปิดใช้งาน
+-- ✅ Camlock | ESP | FPS Boost | Anti-Ban | ดูดของ
+-- ==============================================
+
+local Players = game:GetService("Players")
+local UIS = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
+local TweenService = game:GetService("TweenService")
+local LocalPlayer = Players.LocalPlayer
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+
+-- ==============================================
+-- ⚙️ CONFIG
+-- ==============================================
+local CONFIG = {
+    -- 🎨 THEME
+    MenuBg = Color3.fromRGB(12, 12, 18),
+    Border = Color3.fromRGB(255, 0, 0),
+    Title = Color3.fromRGB(255, 0, 0),
+    Text = Color3.fromRGB(255, 255, 255),
+    BtnOff = Color3.fromRGB(28, 28, 38),
+    BtnOn = Color3.fromRGB(80, 0, 0),
+    AccentRed = Color3.fromRGB(255, 0, 0),
+    GrayText = Color3.fromRGB(150, 150, 150),
+
+    -- 📍 เมนูเล็กกว่าหน้าจอเกม
+    MenuPos = UDim2.new(0.015, 0, 0.25, 0),
+    MenuSize = UDim2.new(0, 240, 0, 390),
+    ToggleBtnSize = 44,
+
+    -- 🎯 CAMLOCK
+    CamlockKey = Enum.KeyCode.E,
+    CamlockFOV = 90,
+    CamlockSmooth = 2.5,
+    LockPart = "Head",
+    AutoLockRange = 150,
+
+    -- 🛡️ ANTI-BAN
+    AntiBanSmooth = 2.8,
+    AntiBanOffset = 1.8,
+
+    -- 👁️ ESP
+    ESP_Normal = Color3.fromRGB(255, 0, 0),
+    ESP_Safezone = Color3.fromRGB(0, 255, 0),
+    ESP_Protect = Color3.fromRGB(255, 255, 0),
+
+    -- 🧲 AUTO MAGNET / ดูดของ
+    Magnet_Enabled = true,
+    Magnet_Range = 80,       -- ระยะดูดของ
+    Magnet_Speed = 12,       -- ความเร็ววิ่งเข้าหาตัว
+    Magnet_HeightOffset = 2, -- ยกของขึ้นเล็กน้อยไม่ติดพื้น
+}
+
+local State = {
+    MenuOpen = true,
+
+    -- 🎯 CAMLOCK
+    Camlock_Enabled = false,
+    AutoLockNearest = true,
+
+    -- 👁️ ESP
+    ESP_Enabled = true,
+    ESP_ShowName = true,
+    ESP_ShowHealth = true,
+    ESP_ShowDistance = true,
+    ESP_ShowBox = true,
+
+    -- ⚡ PERFORMANCE
+    FPSBoost_Enabled = true,
+    AntiBan_Enabled = true,
+
+    -- 🧲 MAGNET / ดูดของ
+    Magnet_Enabled = true,
+
+    -- 📦 ITEM SYSTEM
+    AutoPickup = true,
+    InstantSell = false,
+    InstantDrop = false,
+    UnlimitedEquip = true,
+
+    -- 🚗 VEHICLE
+    AutoLockVehicle = true,
+
+    -- 🎮 RUNTIME
+    Target = nil,
+    Nearest = nil,
+    HoldingAim = false,
+    ESP_Objects = {},
+}
+
+local Character, Root, Humanoid, Head, Camera = nil, nil, nil, nil, Workspace.CurrentCamera
+
+-- ==============================================
+-- 🧹 CLEANUP
+-- ==============================================
+if PlayerGui:FindFirstChild("SAMUISYSTEM") then PlayerGui.SAMUISYSTEM:Destroy() end
+for _, v in pairs(State.ESP_Objects) do if v then v.Gui:Destroy() end end
+State.ESP_Objects = {}
+
+-- ==============================================
+-- 📐 SETUP CHARACTER
+-- ==============================================
+local function SetupChar()
+    Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+    Root = Character:WaitForChild("HumanoidRootPart")
+    Humanoid = Character:WaitForChild("Humanoid")
+    Head = Character:WaitForChild("Head")
+end
+SetupChar()
+LocalPlayer.CharacterAdded:Connect(SetupChar)
+
+-- ==============================================
+-- 🎨 โซน 1: ปุ่มเปิด-ปิดเมนู
+-- ==============================================
+local Gui = Instance.new("ScreenGui")
+Gui.Name = "SAMUISYSTEM"
+Gui.ResetOnSpawn = false
+Gui.Parent = PlayerGui
+
+local ToggleBtn = Instance.new("TextButton")
+ToggleBtn.Name = "ToggleButton"
+ToggleBtn.Size = UDim2.new(0, CONFIG.ToggleBtnSize, 0, CONFIG.ToggleBtnSize)
+ToggleBtn.Position = UDim2.new(0.015, 0, 0.5, -CONFIG.ToggleBtnSize/2)
+ToggleBtn.BackgroundColor3 = Color3.fromRGB(10, 10, 15)
+ToggleBtn.Text = ""
+ToggleBtn.AutoLocalize = false
+ToggleBtn.Visible = not State.MenuOpen
+ToggleBtn.Parent = Gui
+Instance.new("UICorner", ToggleBtn).CornerRadius = UDim.new(1, 0)
+local ToggleStroke = Instance.new("UIStroke")
+ToggleStroke.Color = CONFIG.Border
+ToggleStroke.Thickness = 2
+ToggleStroke.Parent = ToggleBtn
+
+local ToggleDot = Instance.new("Frame")
+ToggleDot.Size = UDim2.new(0.35, 0, 0.35, 0)
+ToggleDot.Position = UDim2.new(0.325, 0, 0.325, 0)
+ToggleDot.BackgroundColor3 = CONFIG.AccentRed
+ToggleDot.Parent = ToggleBtn
+Instance.new("UICorner", ToggleDot).CornerRadius = UDim.new(1, 0)
+
+-- ==============================================
+-- 📦 โซน 2: เมนูหลัก ขนาดเล็กลง
+-- ==============================================
+local MainFrame = Instance.new("Frame")
+MainFrame.Name = "MainMenu"
+MainFrame.Size = CONFIG.MenuSize
+MainFrame.Position = CONFIG.MenuPos
+MainFrame.BackgroundColor3 = CONFIG.MenuBg
+MainFrame.BorderSizePixel = 2
+MainFrame.BorderColor3 = CONFIG.Border
+MainFrame.Visible = State.MenuOpen
+MainFrame.Active = true
+MainFrame.ClipsDescendants = true
+MainFrame.Parent = Gui
+Instance.new("UICorner", MainFrame).CornerRadius = UDim.new(0, 10)
+
+-- แถบหัว
+local Header = Instance.new("Frame")
+Header.Size = UDim2.new(1, 0, 0, 32)
+Header.BackgroundColor3 = Color3.fromRGB(35, 35, 45)
+Header.Parent = MainFrame
+
+local Title = Instance.new("TextLabel")
+Title.Size = UDim2.new(1, -35, 1, 0)
+Title.Position = UDim2.new(0, 12, 0, 0)
+Title.BackgroundTransparency = 1
+Title.Text = "SAMUI SYSTEM v5.0"
+Title.TextColor3 = CONFIG.Title
+Title.Font = Enum.Font.GothamBold
+Title.TextSize = 14
+Title.TextXAlignment = Enum.TextXAlignment.Left
+Title.Parent = MainFrame
+
+local CloseBtn = Instance.new("TextButton")
+CloseBtn.Size = UDim2.new(0, 24, 0, 24)
+CloseBtn.Position = UDim2.new(1, -28, 0, 4)
+CloseBtn.BackgroundTransparency = 1
+CloseBtn.Text = "✕"
+CloseBtn.TextColor3 = CONFIG.GrayText
+CloseBtn.Font = Enum.Font.GothamBold
+CloseBtn.TextSize = 12
+CloseBtn.Parent = MainFrame
+
+-- ==============================================
+-- 🎯 โซน 3: CAMLOCK
+-- ==============================================
+local CamlockBtn = Instance.new("TextButton")
+CamlockBtn.Name = "CamlockBtn"
+CamlockBtn.Size = UDim2.new(1, -20, 0, 38)
+CamlockBtn.Position = UDim2.new(0, 10, 0, 42)
+CamlockBtn.BackgroundColor3 = State.Camlock_Enabled and CONFIG.BtnOn or CONFIG.BtnOff
+CamlockBtn.Text = State.Camlock_Enabled and "CAMLOCK: ON [E]" or "CAMLOCK: OFF [E]"
+CamlockBtn.TextColor3 = CONFIG.Text
+CamlockBtn.Font = Enum.Font.GothamBold
+CamlockBtn.TextSize = 13
+CamlockBtn.Parent = MainFrame
+Instance.new("UICorner", CamlockBtn).CornerRadius = UDim.new(0, 8)
+
+-- ==============================================
+-- 👁️ โซน 4: ESP
+-- ==============================================
+local ESPBtn = Instance.new("TextButton")
+ESPBtn.Name = "ESPBtn"
+ESPBtn.Size = UDim2.new(1, -20, 0, 38)
+ESPBtn.Position = UDim2.new(0, 10, 0, 88)
+ESPBtn.BackgroundColor3 = State.ESP_Enabled and CONFIG.BtnOn or CONFIG.BtnOff
+ESPBtn.Text = State.ESP_Enabled and "ESP: ON" or "ESP: OFF"
+ESPBtn.TextColor3 = CONFIG.Text
+ESPBtn.Font = Enum.Font.GothamBold
+ESPBtn.TextSize = 13
+ESPBtn.Parent = MainFrame
+Instance.new("UICorner", ESPBtn).CornerRadius = UDim.new(0, 8)
+
+-- ==============================================
+-- ⚡ โซน 5: FPS BOOST
+-- ==============================================
+local FPSBtn = Instance.new("TextButton")
+FPSBtn.Size = UDim2.new(1, -20, 0, 38)
+FPSBtn.Position = UDim2.new(0, 10, 0, 134)
+FPSBtn.BackgroundColor3 = State.FPSBoost_Enabled and CONFIG.BtnOn or CONFIG.BtnOff
+FPSBtn.Text = State.FPSBoost_Enabled and "FPS BOOST: ON" or "FPS BOOST: OFF"
+FPSBtn.TextColor3 = CONFIG.Text
+FPSBtn.Font = Enum.Font.GothamBold
+FPSBtn.TextSize = 13
+FPSBtn.Parent = MainFrame
+Instance.new("UICorner", FPSBtn).CornerRadius = UDim.new(0, 8)
+
+-- ==============================================
+-- 🛡️ โซน 6: ANTI-BAN
+-- ==============================================
+local AntiBanBtn = Instance.new("TextButton")
+AntiBanBtn.Size = UDim2.new(1, -20, 0, 38)
+AntiBanBtn.Position = UDim2.new(0, 10, 0, 180)
+AntiBanBtn.BackgroundColor3 = State.AntiBan_Enabled and CONFIG.BtnOn or CONFIG.BtnOff
+AntiBanBtn.Text = State.AntiBan_Enabled and "ANTI-BAN: ON" or "ANTI-BAN: OFF"
+AntiBanBtn.TextColor3 = CONFIG.Text
+AntiBanBtn.Font = Enum.Font.GothamBold
+AntiBanBtn.TextSize = 13
+AntiBanBtn.Parent = MainFrame
+Instance.new("UICorner", AntiBanBtn).CornerRadius = UDim.new(0, 8)
+
+-- ==============================================
+-- 🧲 โซน 7: ดูดของ AUTO MAGNET
+-- ==============================================
+local MagnetBtn = Instance.new("TextButton")
+MagnetBtn.Name = "MagnetBtn"
+MagnetBtn.Size = UDim2.new(1, -20, 0, 38)
+MagnetBtn.Position = UDim2.new(0, 10, 0, 226)
+MagnetBtn.BackgroundColor3 = State.Magnet_Enabled and CONFIG.BtnOn or CONFIG.BtnOff
+MagnetBtn.Text = State.Magnet_Enabled and "MAGNET: ON" or "MAGNET: OFF"
+MagnetBtn.TextColor3 = CONFIG.Text
+MagnetBtn.Font = Enum.Font.GothamBold
+MagnetBtn.TextSize = 13
+MagnetBtn.Parent = MainFrame
+Instance.new("UICorner", MagnetBtn).CornerRadius = UDim.new(0, 8)
+
+-- ==============================================
+-- 🔄 เปิด-ปิดเมนู
+-- ==============================================
+local function ToggleMenu()
+    State.MenuOpen = not State.MenuOpen
+    MainFrame.Visible = State.MenuOpen
+    ToggleBtn.Visible = not State.MenuOpen
+end
+
+ToggleBtn.MouseButton1Click:Connect(ToggleMenu)
+CloseBtn.MouseButton1Click:Connect(ToggleMenu)
+
+-- ==============================================
+-- 🎯 CAMLOCK LOGIC
+-- ==============================================
+local function GetNearestPlayer()
+    if not Root then return nil end
+    local Nearest, MinDist = nil, CONFIG.AutoLockRange
+    for _, Plr in ipairs(Players:GetPlayers()) do
+        if Plr == LocalPlayer then continue end
+        if not Plr.Character then continue end
+        local PRoot = Plr.Character:FindFirstChild("HumanoidRootPart")
+        local PHead = Plr.Character:FindFirstChild("Head")
+        if not PRoot or not PHead then continue end
+        if Plr.Character:FindFirstChild("SpawnProtected") then continue end
+        if Plr.Character:FindFirstChild("InSafezone") then continue end
+
+        local Dist = (Root.Position - PRoot.Position).Magnitude
+        if Dist < MinDist then
+            MinDist = Dist
+            Nearest = Plr
+        end
+    end
+    return Nearest
+end
+
+local function GetLockPos(TargetPlr)
+    if not TargetPlr or not TargetPlr.Character then return nil end
+    local Part = TargetPlr.Character:FindFirstChild(CONFIG.LockPart)
+    if not Part then return nil end
+    local Offset = Vector3.new(
+        math.random(-CONFIG.AntiBanOffset * 10, CONFIG.AntiBanOffset * 10)/100,
+        math.random(-CONFIG.AntiBanOffset * 10, CONFIG.AntiBanOffset * 10)/100,
+        0
+    )
+    return Part.Position + Offset
+end
+
+CamlockBtn.MouseButton1Click:Connect(function()
+    State.Camlock_Enabled = not State.Camlock_Enabled
+    CamlockBtn.Text = State.Camlock_Enabled and "CAMLOCK: ON [E]" or "CAMLOCK: OFF [E]"
+    CamlockBtn.BackgroundColor3 = State.Camlock_Enabled and CONFIG.BtnOn or CONFIG.BtnOff
+end)
+
+UIS.InputBegan:Connect(function(Input, GP)
+    if GP then return end
+    if Input.KeyCode == CONFIG.CamlockKey then
+        State.HoldingAim = true
+        State.Target = GetNearestPlayer()
+    end
+end)
+UIS.InputEnded:Connect(function(Input, GP)
+    if GP then return end
+    if Input.KeyCode == CONFIG.CamlockKey then
+        State.HoldingAim = false
+        State.Target = nil
+    end
+end)
+
+-- ==============================================
+-- 👁️ ESP LOGIC
+-- ==============================================
+local function GetESPColor(Player)
+    local InSafe = Player.Character and Player.Character:FindFirstChild("InSafezone")
+    local Protect = Player.Character and Player.Character:FindFirstChild("SpawnProtected")
+    if InSafe then return CONFIG.ESP_Safezone end
+    if Protect then return CONFIG.ESP_Protect end
+    return CONFIG.ESP_Normal
+end
+
+local function CreateESP(Player)
+    if not Player.Character or not Player.Character:FindFirstChild("Head") then return end
+    local Gui = Instance.new("BillboardGui")
+    Gui.AlwaysOnTop = true
+    Gui.Size = UDim2.new(3, 0, 2.5, 0)
+    Gui.Parent = Player.Character.Head
+
+    local Box = Instance.new("Frame")
+    Box.BackgroundTransparency = 1
+    Box.BorderSizePixel = 2
+    Box.Size = UDim2.new(1, 0, 1, 0)
+    Box.Parent = Gui
+
+    local Name = Instance.new("TextLabel")
+    Name.BackgroundTransparency = 1
+    Name.Text = Player.Name
+    Name.TextColor3 = Color3.fromRGB(255,255,255)
+    Name.TextScaled = true
+    Name.Position = UDim2.new(0,0,-0.25,0)
+    Name.Size = UDim2.new(1,0,0.22,0)
+    Name.Parent = Gui
+
+    State.ESP_Objects[Player.UserId] = {Gui=Gui, Box=Box, Name=Name}
+end
+
+local function UpdateESP()
+    if not State.ESP_Enabled then return end
+    for _, Plr in ipairs(Players:GetPlayers()) do
+        if Plr == LocalPlayer then continue end
+        if not Plr.Character then
+            if State.ESP_Objects[Plr.UserId] then
+                State.ESP_Objects[Plr.UserId].Gui:Destroy()
+                State.ESP_Objects[Plr.UserId] = nil
+            end
+            continue
+        end
+        if not State.ESP_Objects[Plr.UserId] then CreateESP(Plr) end
+        local ESP = State.ESP_Objects[Plr.UserId]
+        ESP.Box.BorderColor3 = GetESPColor(Plr)
+        ESP.Box.BorderSizePixel = (State.Nearest == Plr) and 4 or 2
+    end
+end
+
+ESPBtn.MouseButton1Click:Connect(function()
+    State.ESP_Enabled = not State.ESP_Enabled
+    ESPBtn.Text = State.ESP_Enabled and "ESP: ON" or "ESP: OFF"
+    ESPBtn.BackgroundColor3 = State.ESP_Enabled and CONFIG.BtnOn or CONFIG.BtnOff
+end)
+
+-- ==============================================
+-- ⚡ FPS BOOST
+-- ==============================================
+FPSBtn.MouseButton1Click:Connect(function()
+    State.FPSBoost_Enabled = not State.FPSBoost_Enabled
+    FPSBtn.Text = State.FPSBoost_Enabled and "FPS BOOST: ON" or "FPS BOOST: OFF"
+    FPSBtn.BackgroundColor3 = State.FPSBoost_Enabled and CONFIG.BtnOn or CONFIG.BtnOff
+    if State.FPSBoost_Enabled then
+        settings():SetRenderingSetting("Particles", "ParticleCount", 0)
+        settings():SetRenderingSetting("Shadows", "MapShadows", false)
+    end
+end)
+
+-- ==============================================
+-- 🛡️ ANTI-BAN
+-- ==============================================
+AntiBanBtn.MouseButton1Click:Connect(function()
+    State.AntiBan_Enabled = not State.AntiBan_Enabled
+    AntiBanBtn.Text = State.AntiBan_Enabled and "ANTI-BAN: ON" or "ANTI-BAN: OFF"
+    AntiBanBtn.BackgroundColor3 = State.AntiBan_Enabled and CONFIG.BtnOn or CONFIG.BtnOff
+end)
+
+-- ==============================================
+-- 🧲 AUTO MAGNET / ดูดของ
+-- ==============================================
+MagnetBtn.MouseButton1Click:Connect(function()
+    State.Magnet_Enabled = not State.Magnet_Enabled
+    MagnetBtn.Text = State.Magnet_Enabled and "MAGNET: ON" or "MAGNET: OFF"
+    MagnetBtn.BackgroundColor3 = State.Magnet_Enabled and CONFIG.BtnOn or CONFIG.BtnOff
+end)
+
+local function UpdateMagnet()
+    if not State.Magnet_Enabled or not Root then return end
+
+    -- ปรับชื่อของตามเกมนั้น ๆ ของคุณ
+    local Items = Workspace:GetDescendants()
+    for _, Item in ipairs(Items) do
+        -- เช็คว่าเป็นของที่สามารถดูดได้
+        if Item:IsA("BasePart") and (Item.Name == "Coin" or Item.Name == "Gem" or Item.Name == "Drop" or Item.Name == "Item") then
+            local Dist = (Root.Position - Item.Position).Magnitude
+            if Dist < CONFIG.Magnet_Range then
+                -- ดูดเข้าหาตัว
+                local Direction = (Root.Position + Vector3.new(0, CONFIG.Magnet_HeightOffset, 0) - Item.Position).Unit
+                Item.Velocity = Item.Velocity:Lerp(Direction * CONFIG.Magnet_Speed, 0.15)
+            end
+        end
+    end
+end
+
+-- ==============================================
+-- 🔄 MAIN LOOP
+-- ==============================================
+RunService.RenderStepped:Connect(function()
+    if State.AutoLockNearest then
+        State.Nearest = GetNearestPlayer()
+    end
+
+    if State.Camlock_Enabled and State.HoldingAim and State.Target then
+        local LockPos = GetLockPos(State.Target)
+        if LockPos then
+            local Smooth = State.AntiBan_Enabled and CONFIG.AntiBanSmooth or 1
+            Camera.CFrame = Camera.CFrame:Lerp(CFrame.new(Camera.CFrame.Position, LockPos), 1/Smooth)
+        end
+    end
+
+    UpdateESP()
+    UpdateMagnet()
+end)
+
+print("✅ SAMUI SYSTEM v5.0 — LOADED!")
+print("📍 Menu: Left Screen | Toggle: Red Dot Button")
+print("🎯 Camlock: [E] Hold")
+print("🧲 Magnet: Auto Pull Items")
+print("⚠️  USE IN PRIVATE SERVER ONLY!")
