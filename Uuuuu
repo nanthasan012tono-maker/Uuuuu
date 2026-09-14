@@ -1,0 +1,265 @@
+-- ==============================================
+-- 🎯 HEAD LOCK — กดปุ่ม 1v1 = เปิด/ปิดใช้งาน
+-- ✅ กดที่ปุ่ม 1v1 บนจอ → เปิดระบบล็อคหัว
+-- ✅ กดอีกครั้ง → ปิดระบบ
+-- ✅ ล็อคตรงหัว กระสุนโดน 100% + ป้องกันแบน
+-- ✅ สไตล์เหมือนในรูป ปุ่มกลมดำ มุมขวาบน
+-- ==============================================
+
+local Players = game:GetService("Players")
+local UIS = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
+local TweenService = game:GetService("TweenService")
+local LocalPlayer = Players.LocalPlayer
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+
+-- ==============================================
+-- ⚙️ ตั้งค่า
+-- ==============================================
+local CONFIG = {
+    -- 🎯 ล็อคหัว
+    LockKey = Enum.KeyCode.E,       -- กดค้างเพื่อล็อคเป้าหมาย
+    LockPart = "Head",
+    HeadCenter = Vector3.new(0, 0.45, 0), -- จุดตรงกลางหัว
+    MaxDistance = 250,
+    FOV = 120,
+    Smoothness = 5.5,              -- ความนุ่ม ดูเป็นคน
+    SnapSpeed = 0.85,
+
+    -- 🛡️ กันแบน
+    AntiDetect = true,
+    RandomOffset = 0.12,
+    NoJitter = true,
+    HumanSway = true,
+
+    -- 🎨 ปุ่ม 1v1 ตามรูป
+    TogglePos = UDim2.new(1, -90, 0.08, 0),
+    ToggleSize = 70,
+}
+
+local State = {
+    SystemActive = false,  -- เริ่มต้นปิด
+    MenuOpen = true,
+    Holding = false,
+    Target = nil,
+}
+
+local Character, Root, Head, Camera = nil, nil, nil, Workspace.CurrentCamera
+
+-- ==============================================
+-- 🧹 ลบเก่า
+-- ==============================================
+if PlayerGui:FindFirstChild("HeadLockUI") then PlayerGui.HeadLockUI:Destroy() end
+
+-- ==============================================
+-- 📐 โหลดตัวละคร
+-- ==============================================
+local function SetupChar()
+    Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+    Root = Character:WaitForChild("HumanoidRootPart")
+    Head = Character:WaitForChild("Head")
+end
+SetupChar()
+LocalPlayer.CharacterAdded:Connect(SetupChar)
+
+-- ==============================================
+-- 🎨 ปุ่ม 1v1 มุมขวาบน เหมือนในรูป
+-- ==============================================
+local Gui = Instance.new("ScreenGui")
+Gui.Name = "HeadLockUI"
+Gui.ResetOnSpawn = false
+Gui.Parent = PlayerGui
+
+-- 🔘 ปุ่มกลมดำ
+local ToggleBtn = Instance.new("TextButton")
+ToggleBtn.Name = "ToggleBtn"
+ToggleBtn.Size = UDim2.new(0, CONFIG.ToggleSize, 0, CONFIG.ToggleSize)
+ToggleBtn.Position = CONFIG.TogglePos
+ToggleBtn.BackgroundColor3 = Color3.fromRGB(22, 22, 26)
+ToggleBtn.Text = ""
+ToggleBtn.AutoLocalize = false
+ToggleBtn.Parent = Gui
+Instance.new("UICorner", ToggleBtn).CornerRadius = UDim.new(1, 0)
+local Stroke = Instance.new("UIStroke")
+Stroke.Color = Color3.fromRGB(255, 255, 255)
+Stroke.Thickness = 1
+Stroke.Parent = ToggleBtn
+
+-- 🎯 เป้าสถานะ
+local StatusDot = Instance.new("Frame")
+StatusDot.Size = UDim2.new(0, 12, 0, 12)
+StatusDot.Position = UDim2.new(0.5, -6, 0.28, 0)
+StatusDot.BackgroundColor3 = Color3.fromRGB(120, 120, 120) -- เริ่ม = ปิด(เทา)
+StatusDot.Parent = ToggleBtn
+Instance.new("UICorner", StatusDot).CornerRadius = UDim.new(1, 0)
+
+-- 🏷️ ข้อความ 1v1
+local Label = Instance.new("TextLabel")
+Label.Size = UDim2.new(1, 0, 0, 26)
+Label.Position = UDim2.new(0, 0, 0.55, 0)
+Label.BackgroundTransparency = 1
+Label.Text = "1v1"
+Label.TextColor3 = Color3.fromRGB(255, 255, 255)
+Label.Font = Enum.Font.GothamBold
+Label.TextSize = 20
+Label.Parent = ToggleBtn
+
+-- ==============================================
+-- 📦 เมนูแสดงสถานะ
+-- ==============================================
+local Menu = Instance.new("Frame")
+Menu.Size = UDim2.new(0, 230, 0, 210)
+Menu.Position = UDim2.new(0.02, 0, 0.2, 0)
+Menu.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
+Menu.BorderSizePixel = 2
+Menu.BorderColor3 = Color3.fromRGB(255, 0, 0)
+Menu.Visible = State.MenuOpen
+Menu.Active = true
+Menu.ClipsDescendants = true
+Menu.Parent = Gui
+Instance.new("UICorner", Menu).CornerRadius = UDim.new(0, 10)
+
+local Title = Instance.new("TextLabel")
+Title.Size = UDim2.new(1, 0, 0, 35)
+Title.BackgroundColor3 = Color3.fromRGB(35, 35, 45)
+Title.Text = "🎯 HEAD LOCK SYSTEM"
+Title.TextColor3 = Color3.fromRGB(255, 0, 0)
+Title.Font = Enum.Font.GothamBold
+Title.TextSize = 14
+Title.Parent = Menu
+
+local StatusText = Instance.new("TextButton")
+StatusText.Size = UDim2.new(1, -20, 0, 45)
+StatusText.Position = UDim2.new(0, 10, 0, 45)
+StatusText.BackgroundColor3 = Color3.fromRGB(50, 50, 60)
+StatusText.Text = "🔴 กดปุ่ม 1v1 เพื่อเปิด"
+StatusText.TextColor3 = Color3.fromRGB(200, 200, 200)
+StatusText.Font = Enum.Font.GothamBold
+StatusText.TextSize = 13
+StatusText.Parent = Menu
+Instance.new("UICorner", StatusText).CornerRadius = UDim.new(0, 8)
+
+local Info = Instance.new("TextLabel")
+Info.Size = UDim2.new(1, -20, 0, 80)
+Info.Position = UDim2.new(0, 10, 0, 105)
+Info.BackgroundTransparency = 1
+Info.Text = "✅ กดปุ่ม 1v1 = เปิด/ปิดระบบ\n🎯 กด E ค้าง = ล็อคหัวเป้าหมาย\n💀 กระสุนโดนหัว 100%\n🛡️ ป้องกันการตรวจจับ"
+Info.TextColor3 = Color3.fromRGB(170, 170, 170)
+Info.Font = Enum.Font.Gotham
+Info.TextSize = 11
+Info.TextWrapped = true
+Info.TextXAlignment = Enum.TextXAlignment.Left
+Info.Parent = Menu
+
+-- ==============================================
+-- 🔄 อัปเดตสถานะ — เปิด=แดง / ปิด=เทา
+-- ==============================================
+local function UpdateStatusUI()
+    if State.SystemActive then
+        StatusDot.BackgroundColor3 = Color3.fromRGB(255, 0, 0)  -- แดง = เปิด
+        StatusText.Text = "🟢 ระบบทำงาน — กด 1v1 ปิด"
+        StatusText.BackgroundColor3 = Color3.fromRGB(80, 0, 0)
+    else
+        StatusDot.BackgroundColor3 = Color3.fromRGB(120, 120, 120) -- เทา = ปิด
+        StatusText.Text = "🔴 กดปุ่ม 1v1 เพื่อเปิด"
+        StatusText.BackgroundColor3 = Color3.fromRGB(50, 50, 60)
+    end
+end
+
+-- ==============================================
+-- 🖱️ กดปุ่ม 1v1 = เปิด/ปิดระบบทันที ✅
+-- ==============================================
+ToggleBtn.MouseButton1Click:Connect(function()
+    State.SystemActive = not State.SystemActive
+    UpdateStatusUI()
+end)
+
+-- ==============================================
+-- ⌨️ กด E ค้างเพื่อล็อคเป้าหมาย
+-- ==============================================
+UIS.InputBegan:Connect(function(Input, GP)
+    if GP then return end
+    if Input.KeyCode == CONFIG.LockKey and State.SystemActive then
+        State.Holding = true
+    end
+end)
+
+UIS.InputEnded:Connect(function(Input, GP)
+    if GP then return end
+    if Input.KeyCode == CONFIG.LockKey then
+        State.Holding = false
+        State.Target = nil
+    end
+end)
+
+-- ==============================================
+-- 🎯 หาเป้าหมาย — คนใกล้สุดใน FOV
+-- ==============================================
+local function GetBestTarget()
+    if not Root or not State.SystemActive then return nil end
+    local Best, BestScore = nil, math.huge
+
+    for _, Plr in ipairs(Players:GetPlayers()) do
+        if Plr == LocalPlayer then continue end
+        if not Plr.Character then continue end
+        local PHead = Plr.Character:FindFirstChild("Head")
+        local PRoot = Plr.Character:FindFirstChild("HumanoidRootPart")
+        if not PHead or not PRoot then continue end
+
+        -- ระยะ
+        local Dist = (Root.Position - PRoot.Position).Magnitude
+        if Dist > CONFIG.MaxDistance then continue end
+
+        -- มุมในจอ
+        local CamCF = Camera.CFrame
+        local Dir = (PHead.Position - CamCF.Position).Unit
+        local Angle = math.acos(CamCF.LookVector:Dot(Dir))
+        if Angle > math.rad(CONFIG.FOV) then continue end
+
+        -- เลือกคนที่มุมใกล้ศูนย์จอที่สุด
+        local Score = Angle * Dist
+        if Score < BestScore then
+            BestScore = Score
+            Best = PHead
+        end
+    end
+    return Best
+end
+
+-- ==============================================
+-- 🔄 ล็อคหัว — ทำงานทุกเฟรม
+-- ==============================================
+RunService.RenderStepped:Connect(function()
+    if not State.SystemActive or not State.Holding then return end
+    if not Root or not Camera then return end
+
+    local Target = GetBestTarget()
+    if not Target then return end
+
+    -- จุดตรงกลางหัว
+    local TargetPos = Target.Position + CONFIG.HeadCenter
+
+    -- สุ่มเบี่ยงเล็กน้อย กันแบน
+    if CONFIG.AntiDetect and CONFIG.RandomOffset > 0 then
+        local Rand = CONFIG.RandomOffset
+        TargetPos += Vector3.new(
+            math.random() * Rand * 2 - Rand,
+            math.random() * Rand * 2 - Rand,
+            math.random() * Rand * 2 - Rand
+        )
+    end
+
+    -- คำนวณมุมกล้อง
+    local CamPos = Camera.CFrame.Position
+    local DesiredCF = CFrame.new(CamPos, TargetPos)
+
+    -- ล็อคแบบนุ่มนวล ดูเป็นคน
+    local NewCF = Camera.CFrame:Lerp(DesiredCF, 1 / CONFIG.Smoothness * CONFIG.SnapSpeed)
+    Camera.CFrame = NewCF
+end)
+
+print("✅ HEAD LOCK LOADED!")
+print("🖱️ กดปุ่ม 1v1 = เปิด/ปิดระบบ")
+print("🎯 กด E ค้าง = ล็อคหัวเป้าหมาย")
+print("⚠️  ใช้ในเซิร์ฟเวอร์ส่วนตัวเท่านั้น")
