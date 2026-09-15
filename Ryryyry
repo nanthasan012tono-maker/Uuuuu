@@ -1,0 +1,51 @@
+-- ==============================================
+-- 🎮 ปรับภาพให้เรียบง่าย — เบาเครื่อง ภาพไม่ซับซ้อน
+-- ✅ ลดเอฟเฟกต์ให้น้อยที่สุด
+-- ✅ สีเรียบ แสงธรรมดา
+-- ✅ เฟรมเรตนิ่ง เล่นลื่น
+-- ==============================================
+
+local Lighting = game:GetService("Lighting")
+local LocalPlayer = game:GetService("Players").LocalPlayer
+
+-- ==============================================
+-- ⚙️ ตั้งค่า — ภาพเรียบง่าย
+-- ==============================================
+local CONFIG = {
+    Brightness = 1,
+    Contrast = 1,
+    Saturation = 0.85,
+    Ambient = Color3.fromRGB(140, 140, 140),
+    OutdoorAmbient = Color3.fromRGB(180, 180, 180),
+}
+
+-- ==============================================
+-- 🔧 ปรับแสงและสี
+-- ==============================================
+Lighting.Brightness = CONFIG.Brightness
+Lighting.Contrast = CONFIG.Contrast
+Lighting.Saturation = CONFIG.Saturation
+Lighting.Ambient = CONFIG.Ambient
+Lighting.OutdoorAmbient = CONFIG.OutdoorAmbient
+Lighting.EnvironmentSpecularScale = 0
+Lighting.EnvironmentDiffuseScale = 1
+
+-- ปิดเอฟเฟกต์ทั้งหมด เพื่อให้ภาพเรียบง่าย
+for _, Effect in pairs(Lighting:GetChildren()) do
+    if Effect:IsA("BloomEffect") or Effect:IsA("ColorCorrectionEffect") 
+    or Effect:IsA("SunRaysEffect") or Effect:IsA("DepthOfFieldEffect")
+    or Effect:IsA("BlurEffect") then
+        Effect.Enabled = false
+    end
+end
+
+-- ปิดเงาให้เบาเครื่อง
+Lighting.GlobalShadows = false
+Lighting.ShadowSoftness = 0.2
+
+-- ปรับคุณภาพการเรนเดอร์
+task.spawn(function()
+    LocalPlayer:SetAttribute("RenderQuality", 3)
+end)
+
+print("✅ ปรับภาพเรียบง่ายเรียบร้อย!")
