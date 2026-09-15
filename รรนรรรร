@@ -1,0 +1,119 @@
+-- ==============================================
+-- 🎮 FPS Booster + ภาพดินน้ำมัน + ทำงานร่วมกับสคริปต์อื่นได้
+-- ✅ ไม่ขัดกับสคริปต์อื่น — ใช้คู่กันได้เลย
+-- ✅ ภาพดินน้ำมัน — บล็อกๆ สวยงาม ลื่นสุดๆ
+-- ✅ ปิดแสงจ้า ปิดเงา ปิดเอฟเฟกต์
+-- ✅ ไม่ลบ/ทับตัวแปรของสคริปต์อื่น
+-- ==============================================
+
+-- ⚙️ ตั้งค่า — ปลอดภัย ไม่ทับของอื่น
+local FPS_CONFIG = {
+    Players = {
+        ["IgnoreMe"] = true,
+        ["IgnoreOthers"] = true
+    },
+    Meshes = {
+        Destroy = false,
+        LowDetail = true          -- ✅ ดินน้ำมัน — โมเดลเรียบ
+    },
+    Images = {
+        Invisible = false,
+        LowDetail = true,         -- ✅ พื้นผิวเรียบ
+        Destroy = false
+    },
+    NoParticles = true,           -- ปิดควัน/ไฟ/รอยทาง
+    NoCameraEffects = true,       -- ปิดแสง/เบลอ
+    NoExplosions = true,          -- ปิดระเบิด
+    NoClothes = true,             -- ลบเสื้อผ้า
+    LowWater = true,              -- น้ำเรียบ
+    NoShadows = true,             -- ปิดเงา
+    LowRender = true,             -- ลดคุณภาพทั่วไป
+    LowQualityParts = true,       -- ชิ้นส่วนเรียบ
+    ReduceBrightness = true,      -- ลดแสง
+}
+
+-- ==============================================
+-- 🔧 ปรับแสง + ภาพดินน้ำมัน
+-- ==============================================
+local Lighting = game:GetService("Lighting")
+
+-- ปรับแสงให้อ่อนลง สบายตา
+Lighting.Brightness = 0.65
+Lighting.Contrast = 0.85
+Lighting.Saturation = 0.8
+Lighting.Ambient = Color3.fromRGB(85, 85, 90)
+Lighting.OutdoorAmbient = Color3.fromRGB(120, 120, 125)
+Lighting.EnvironmentSpecularScale = 0
+Lighting.EnvironmentDiffuseScale = 0.7
+Lighting.GlobalShadows = false  -- ปิดเงา
+
+-- ปิดเอฟเฟกต์แสง — ทำงานต่อเนื่อง ไม่ให้กลับมา
+task.spawn(function()
+    while task.wait(5) do
+        for _, Effect in ipairs(Lighting:GetChildren()) do
+            if Effect:IsA("BloomEffect") 
+            or Effect:IsA("SunRaysEffect")
+            or Effect:IsA("ColorCorrectionEffect")
+            or Effect:IsA("DepthOfFieldEffect")
+            or Effect:IsA("BlurEffect") then
+                Effect.Enabled = false
+            end
+        end
+    end
+end)
+
+-- ==============================================
+-- 🔗 ตั้งค่าสำหรับโหลดระบบหลัก — ไม่ทับตัวแปรอื่น
+-- ==============================================
+-- ใช้ชื่อเฉพาะ ไม่ให้ซ้ำกับสคริปต์อื่น
+if not _G.RIP_FPS then
+    _G.RIP_FPS = {}
+end
+
+-- ก๊อปปี้ค่าลงตัวแปรที่ระบบหลักต้องการ
+_G.RIP_FPS.Settings = {
+    Players = {
+        ["Ignore Me"] = FPS_CONFIG.Players.IgnoreMe,
+        ["Ignore Others"] = FPS_CONFIG.Players.IgnoreOthers
+    },
+    Meshes = {
+        Destroy = FPS_CONFIG.Meshes.Destroy,
+        LowDetail = FPS_CONFIG.Meshes.LowDetail
+    },
+    Images = {
+        Invisible = FPS_CONFIG.Images.Invisible,
+        LowDetail = FPS_CONFIG.Images.LowDetail,
+        Destroy = FPS_CONFIG.Images.Destroy
+    },
+    ["No Particles"] = FPS_CONFIG.NoParticles,
+    ["No Camera Effects"] = FPS_CONFIG.NoCameraEffects,
+    ["No Explosions"] = FPS_CONFIG.NoExplosions,
+    ["No Clothes"] = FPS_CONFIG.NoClothes,
+    ["Low Water Graphics"] = FPS_CONFIG.LowWater,
+    ["No Shadows"] = FPS_CONFIG.NoShadows,
+    ["Low Rendering"] = FPS_CONFIG.LowRender,
+    ["Low Quality Parts"] = FPS_CONFIG.LowQualityParts
+}
+
+-- เชื่อมต่อให้ระบบหลักอ่านได้
+local OriginalSettings = _G.Settings
+_G.Settings = _G.RIP_FPS.Settings
+
+-- โหลดระบบหลัก
+local Success, Error = pcall(function()
+    loadstring(game:HttpGet("https://raw.githubusercontent.com/CasperFlyModz/discord.gg-rips/main/FPSBooster.lua"))()
+end)
+
+-- คืนค่าเดิมให้สคริปต์อื่นใช้ต่อ
+task.defer(function()
+    if OriginalSettings then
+        _G.Settings = OriginalSettings
+    end
+end)
+
+if Success then
+    print("✅ FPS Booster + ดินน้ำมัน — โหลดเสร็จ!")
+    print("✅ ทำงานร่วมกับสคริปต์อื่นได้ปกติ")
+else
+    warn("⚠️ โหลดระบบหลักล้มเหลว: " .. tostring(Error))
+end
